@@ -7,9 +7,9 @@ Twitcher reads your watch's GPS position and asks eBird what has been reported n
 
 It does not identify birds. It has no photos, no sound recognition, and no idea what you are actually looking at. It tells you what other people have seen near where you are standing, which is sometimes enough to narrow things down.
 
-## Screenshots
+## Screenshot
 
-<!-- Add a photo of the widget running on your watch here -->
+<img width="562" height="563" alt="Screenshot" src="https://github.com/user-attachments/assets/f7bed1a8-9e31-4c7c-812d-e44fd8acb375" />
 
 ## Requirements
 
