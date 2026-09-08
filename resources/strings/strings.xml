@@ -1,0 +1,7 @@
+<strings>
+    <string id="AppName">Twitcher</string>
+    <string id="SettingApiKey">eBird API key</string>
+    <string id="SettingApiKeyPrompt">Get a free key at ebird.org/api/keygen</string>
+    <string id="SettingRadius">Search radius (km)</string>
+    <string id="SettingDays">Days to look back</string>
+</strings>

@@ -1,0 +1,12 @@
+<drawables>
+    <bitmap id="LauncherIcon" filename="launcher_icon.png" dithering="none" />
+    <bitmap id="IconGull" filename="bird_gull.png" dithering="none" />
+    <bitmap id="IconDuck" filename="bird_duck.png" dithering="none" />
+    <bitmap id="IconWader" filename="bird_wader.png" dithering="none" />
+    <bitmap id="IconPasserine" filename="bird_passerine.png" dithering="none" />
+    <bitmap id="IconCorvid" filename="bird_corvid.png" dithering="none" />
+    <bitmap id="IconPigeon" filename="bird_pigeon.png" dithering="none" />
+    <bitmap id="IconRaptor" filename="bird_raptor.png" dithering="none" />
+    <bitmap id="IconHeron" filename="bird_heron.png" dithering="none" />
+    <bitmap id="IconBird" filename="bird_bird.png" dithering="none" />
+</drawables>
