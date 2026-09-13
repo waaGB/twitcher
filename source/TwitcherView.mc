@@ -7,11 +7,19 @@ import Toybox.PersistedContent;
 import Toybox.Timer;
 import Toybox.Math;
 import Toybox.Application;
+import Toybox.System;
 
 class TwitcherView extends WatchUi.View {
 
     const CAP = 24;
     const MAX_TRIES = 12;
+
+    const TEAL       = 0x005555;
+    const ORANGE     = 0xAA5500;
+    const TEAL_MUTE  = 0x66BBBB;
+    const AMBER_MUTE = 0xFFBB66;
+
+    const EASE = 0.18;
 
     hidden var rowText = new [24];
     hidden var rowIcon = new [24];
@@ -30,6 +38,10 @@ class TwitcherView extends WatchUi.View {
     hidden var scroll = 0;
     hidden var visible = 5;
     hidden var tries = 0;
+    hidden var colourMode = true;
+
+    hidden var colourT = 0.0;
+    hidden var fadeTimer = null;
 
     function initialize() {
         View.initialize();
@@ -46,6 +58,16 @@ class TwitcherView extends WatchUi.View {
         art.put("raptor", WatchUi.loadResource(Rez.Drawables.IconRaptor));
         art.put("heron", WatchUi.loadResource(Rez.Drawables.IconHeron));
         art.put("bird", WatchUi.loadResource(Rez.Drawables.IconBird));
+
+        colourMode = false;
+        try {
+            var s = System.getDeviceSettings();
+            if (s has :requiresBurnInProtection && s.requiresBurnInProtection == true) {
+                colourMode = true;
+            }
+        } catch (e) {
+            colourMode = false;
+        }
 
         var rowH = rowHeight(dc);
         visible = (dc.getHeight() * 0.66).toNumber() / rowH;
@@ -67,7 +89,7 @@ class TwitcherView extends WatchUi.View {
     }
 
     function onShow() as Void {
-        Position.enableLocationEvents(Position.LOCATION_ONE_SHOT, method(:onPosition));
+        Position.enableLocationEvents(Position.LOCATION_CONTINUOUS, method(:onPosition));
         startTimer();
         fetchNearby();
     }
@@ -92,7 +114,7 @@ class TwitcherView extends WatchUi.View {
 
         if (tries > MAX_TRIES) {
             if (rows == 0) {
-                status = "No data. START to retry";
+                status = "No GPS. START to retry";
             }
             finish();
             return;
@@ -110,11 +132,97 @@ class TwitcherView extends WatchUi.View {
         done = false;
         status = "Refreshing...";
 
-        Position.enableLocationEvents(Position.LOCATION_ONE_SHOT, method(:onPosition));
+        colourT = 0.0;
+        stopFade();
+
+        Position.enableLocationEvents(Position.LOCATION_CONTINUOUS, method(:onPosition));
         startTimer();
 
         WatchUi.requestUpdate();
         fetchNearby();
+    }
+
+    hidden function altStart() {
+        for (var i = 0; i < rows; i++) {
+            if (rowKind[i].equals("headalt")) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    hidden function altProgress() {
+        var alt = altStart();
+
+        if (alt < 0) {
+            return 0.0;
+        }
+
+        var p = (scroll + visible - alt).toFloat() / visible.toFloat();
+
+        if (p < 0.0) {
+            p = 0.0;
+        }
+        if (p > 1.0) {
+            p = 1.0;
+        }
+        return p;
+    }
+
+    hidden function stopFade() {
+        if (fadeTimer != null) {
+            fadeTimer.stop();
+            fadeTimer = null;
+        }
+    }
+
+    hidden function startFade() {
+        if (!colourMode) {
+            colourT = altProgress();
+            return;
+        }
+
+        if (fadeTimer == null) {
+            fadeTimer = new Timer.Timer();
+            fadeTimer.start(method(:fadeTick), 33, true);
+        }
+    }
+
+    function fadeTick() as Void {
+        var target = altProgress();
+        var diff = target - colourT;
+
+        if (diff < 0.004 && diff > -0.004) {
+            colourT = target;
+            stopFade();
+        } else {
+            colourT = colourT + (diff * EASE);
+        }
+
+        WatchUi.requestUpdate();
+    }
+
+    hidden function blend(a, b, t) {
+        var ar = (a >> 16) & 0xFF;
+        var ag = (a >> 8) & 0xFF;
+        var ab = a & 0xFF;
+
+        var br = (b >> 16) & 0xFF;
+        var bg = (b >> 8) & 0xFF;
+        var bb = b & 0xFF;
+
+        var r = (ar + ((br - ar) * t)).toNumber();
+        var g = (ag + ((bg - ag) * t)).toNumber();
+        var bl = (ab + ((bb - ab) * t)).toNumber();
+
+        if (r < 0) { r = 0; }
+        if (r > 255) { r = 255; }
+        if (g < 0) { g = 0; }
+        if (g > 255) { g = 255; }
+        if (bl < 0) { bl = 0; }
+        if (bl > 255) { bl = 255; }
+
+        return (r << 16) | (g << 8) | bl;
     }
 
     function scrollBy(n) as Void {
@@ -135,6 +243,7 @@ class TwitcherView extends WatchUi.View {
             scroll = 0;
         }
 
+        startFade();
         WatchUi.requestUpdate();
     }
 
@@ -293,13 +402,30 @@ class TwitcherView extends WatchUi.View {
 
         if (pos == null) {
             if (rows == 0) {
-                status = "No fix";
+                status = "Waiting for GPS";
             }
             WatchUi.requestUpdate();
             return false;
         }
 
         var deg = pos.toDegrees();
+
+        if (deg[0] == 0 && deg[1] == 0) {
+            if (rows == 0) {
+                status = "Waiting for GPS";
+            }
+            WatchUi.requestUpdate();
+            return false;
+        }
+
+        if (deg[0] < -90 || deg[0] > 90 || deg[1] < -180 || deg[1] > 180) {
+            if (rows == 0) {
+                status = "Waiting for GPS";
+            }
+            WatchUi.requestUpdate();
+            return false;
+        }
+
         lastLat = deg[0];
         lastLng = deg[1];
 
@@ -422,7 +548,7 @@ class TwitcherView extends WatchUi.View {
         }
 
         if (notableN > 0) {
-            addRow("UNUSUAL", null, "head");
+            addRow("UNUSUAL", null, "headalt");
 
             for (var i = 0; i < notableN; i++) {
                 var dup = false;
@@ -432,7 +558,7 @@ class TwitcherView extends WatchUi.View {
                     }
                 }
                 if (!dup) {
-                    addRow(notable[i], groupFor(notable[i]), "bird");
+                    addRow(notable[i], groupFor(notable[i]), "birdalt");
                 }
             }
         }
@@ -488,12 +614,22 @@ class TwitcherView extends WatchUi.View {
     }
 
     function onUpdate(dc as Dc) as Void {
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
-        dc.clear();
-
         var cx = dc.getWidth() / 2;
         var cy = dc.getHeight() / 2;
         var fh = dc.getFontHeight(Graphics.FONT_XTINY);
+        var w = dc.getWidth();
+
+        var muted = Graphics.COLOR_DK_GRAY;
+
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
+        dc.clear();
+
+        if (colourMode) {
+            muted = blend(TEAL_MUTE, AMBER_MUTE, colourT);
+
+            dc.setColor(blend(TEAL, ORANGE, colourT), Graphics.COLOR_TRANSPARENT);
+            dc.fillCircle(cx, cy, cx + 2);
+        }
 
         if (rows == 0) {
             var msg = status;
@@ -504,7 +640,8 @@ class TwitcherView extends WatchUi.View {
             dc.drawText(cx, cy, Graphics.FONT_XTINY, msg,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
 
-            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+            dc.setColor(colourMode ? TEAL_MUTE : Graphics.COLOR_DK_GRAY,
+                Graphics.COLOR_TRANSPARENT);
             dc.drawText(cx, cy + fh + 12, Graphics.FONT_XTINY,
                 "eBird / Cornell Lab", Graphics.TEXT_JUSTIFY_CENTER);
             return;
@@ -544,14 +681,23 @@ class TwitcherView extends WatchUi.View {
 
             var kind = rowKind[idx];
 
-            if (kind.equals("head")) {
-                dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
+            if (kind.equals("foot")) {
+                dc.setColor(muted, Graphics.COLOR_TRANSPARENT);
                 dc.drawText(cx, y + 3, Graphics.FONT_XTINY, rowText[idx],
                     Graphics.TEXT_JUSTIFY_CENTER);
-            } else if (kind.equals("foot")) {
+
+            } else if (kind.equals("headalt") && !colourMode) {
                 dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+                dc.fillRectangle(cx - (half / 2), y + 2, half, 1);
+                dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+                dc.drawText(cx, y + 6, Graphics.FONT_XTINY, rowText[idx],
+                    Graphics.TEXT_JUSTIFY_CENTER);
+
+            } else if (kind.equals("head") || kind.equals("headalt")) {
+                dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
                 dc.drawText(cx, y + 3, Graphics.FONT_XTINY, rowText[idx],
                     Graphics.TEXT_JUSTIFY_CENTER);
+
             } else {
                 var textX = left + 36;
                 var maxW = (cx + half) - textX;
@@ -569,20 +715,37 @@ class TwitcherView extends WatchUi.View {
         }
 
         if (rows > visible) {
-            var barH = dc.getHeight() / 3;
-            var barY = cy - (barH / 2);
-            var thumbH = (barH * visible) / rows;
-            var thumbY = barY + ((barH - thumbH) * scroll) / (rows - visible);
+            var arcR = cx - 4;
+            var span = 70;
+            var top = span / 2;
+            
+            var frac = visible.toFloat() / rows.toFloat();
+            var thumbSpan = (span * frac).toNumber();
+            if (thumbSpan < 8) {
+                thumbSpan = 8;
+            }
 
-            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-            dc.fillRectangle(dc.getWidth() - 6, barY, 3, barH);
+            var pos = scroll.toFloat() / (rows - visible).toFloat();
+            var thumbStart = top - ((span - thumbSpan) * pos).toNumber();
+
+            dc.setPenWidth(4);
+
+            dc.setColor(colourMode ? muted : Graphics.COLOR_DK_GRAY,
+                Graphics.COLOR_TRANSPARENT);
+            dc.drawArc(cx, cy, arcR, Graphics.ARC_CLOCKWISE,
+                top, top - span);
+
             dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-            dc.fillRectangle(dc.getWidth() - 6, thumbY, 3, thumbH);
+            dc.drawArc(cx, cy, arcR, Graphics.ARC_CLOCKWISE,
+                thumbStart, thumbStart - thumbSpan);
+
+            dc.setPenWidth(1);
         }
     }
 
     function onHide() as Void {
         Position.enableLocationEvents(Position.LOCATION_DISABLE, method(:onPosition));
+        stopFade();
         if (timer != null) {
             timer.stop();
         }

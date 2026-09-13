@@ -1,6 +1,6 @@
 <settings>
     <setting propertyKey="@Properties.apiKey" title="@Strings.SettingApiKey" prompt="@Strings.SettingApiKeyPrompt">
-        <settingConfig type="alphaNumeric" maxLength="24" />
+        <settingConfig type="alphaNumeric" maxLength="48" />
     </setting>
     <setting propertyKey="@Properties.searchRadius" title="@Strings.SettingRadius">
         <settingConfig type="numeric" min="1" max="50" />
