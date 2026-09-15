@@ -13,20 +13,31 @@ class TwitcherView extends WatchUi.View {
 
     const CAP = 24;
     const MAX_TRIES = 12;
+    const EASE = 0.18;
+
+    const MARQ_GAP   = 44;
+    const MARQ_PAUSE = 26;
+    const MARQ_STEP  = 2;
 
     const TEAL       = 0x005555;
     const ORANGE     = 0xAA5500;
     const TEAL_MUTE  = 0x66BBBB;
     const AMBER_MUTE = 0xFFBB66;
 
-    const EASE = 0.18;
-
     hidden var rowText = new [24];
     hidden var rowIcon = new [24];
     hidden var rowKind = new [24];
+    hidden var rowSci  = new [24];
+    hidden var rowCount = new [24];
+    hidden var rowDate = new [24];
+    hidden var rowLoc  = new [24];
     hidden var rows = 0;
 
-    hidden var nearby = new [12];
+    hidden var nName = new [12];
+    hidden var nSci  = new [12];
+    hidden var nCnt  = new [12];
+    hidden var nDate = new [12];
+    hidden var nLoc  = new [12];
     hidden var nearbyN = 0;
 
     hidden var status = "Locating...";
@@ -40,8 +51,15 @@ class TwitcherView extends WatchUi.View {
     hidden var tries = 0;
     hidden var colourMode = true;
 
+    hidden var sel = -1;
+    hidden var detail = -1;
+
     hidden var colourT = 0.0;
     hidden var fadeTimer = null;
+
+    hidden var marqOff = 0;
+    hidden var marqMax = 0;
+    hidden var marqTimer = null;
 
     function initialize() {
         View.initialize();
@@ -114,7 +132,7 @@ class TwitcherView extends WatchUi.View {
 
         if (tries > MAX_TRIES) {
             if (rows == 0) {
-                status = "No GPS. START to retry";
+                status = "No GPS. MENU to retry";
             }
             finish();
             return;
@@ -129,17 +147,112 @@ class TwitcherView extends WatchUi.View {
         rows = 0;
         nearbyN = 0;
         scroll = 0;
+        sel = -1;
+        detail = -1;
         done = false;
         status = "Refreshing...";
 
         colourT = 0.0;
         stopFade();
+        stopMarq();
 
         Position.enableLocationEvents(Position.LOCATION_CONTINUOUS, method(:onPosition));
         startTimer();
 
         WatchUi.requestUpdate();
         fetchNearby();
+    }
+
+    hidden function isBird(i) {
+        if (i < 0 || i >= rows) {
+            return false;
+        }
+        return rowKind[i].equals("bird") || rowKind[i].equals("birdalt");
+    }
+
+    function moveSel(n) as Void {
+        if (rows == 0 || detail >= 0) {
+            return;
+        }
+
+        var i = sel;
+
+        while (true) {
+            i = i + n;
+            if (i < 0 || i >= rows) {
+                return;
+            }
+            if (isBird(i)) {
+                break;
+            }
+        }
+
+        sel = i;
+
+        if (sel < scroll + 1) {
+            scroll = sel - 1;
+        }
+        if (sel > scroll + visible - 2) {
+            scroll = sel - visible + 2;
+        }
+
+        var maxScroll = rows - visible;
+        if (maxScroll < 0) {
+            maxScroll = 0;
+        }
+        if (scroll > maxScroll) {
+            scroll = maxScroll;
+        }
+        if (scroll < 0) {
+            scroll = 0;
+        }
+
+        startFade();
+        WatchUi.requestUpdate();
+    }
+
+    hidden function stopMarq() {
+        if (marqTimer != null) {
+            marqTimer.stop();
+            marqTimer = null;
+        }
+        marqOff = 0;
+        marqMax = 0;
+    }
+
+    function marqTick() as Void {
+        marqOff = marqOff + MARQ_STEP;
+
+        if (marqOff > marqMax) {
+            marqOff = -(MARQ_PAUSE * MARQ_STEP);
+        }
+
+        WatchUi.requestUpdate();
+    }
+
+    function openDetail() as Void {
+        if (isBird(sel)) {
+            detail = sel;
+            marqOff = -(MARQ_PAUSE * MARQ_STEP);
+            marqMax = 0;
+
+            if (marqTimer == null) {
+                marqTimer = new Timer.Timer();
+                marqTimer.start(method(:marqTick), 50, true);
+            }
+
+            WatchUi.requestUpdate();
+        }
+    }
+
+    function closeDetail() as Boolean {
+        if (detail >= 0) {
+            detail = -1;
+            stopMarq();
+            WatchUi.requestUpdate();
+            return true;
+        }
+        return false;
     }
 
     hidden function altStart() {
@@ -223,28 +336,6 @@ class TwitcherView extends WatchUi.View {
         if (bl > 255) { bl = 255; }
 
         return (r << 16) | (g << 8) | bl;
-    }
-
-    function scrollBy(n) as Void {
-        if (rows == 0) {
-            return;
-        }
-
-        scroll = scroll + n;
-
-        var maxScroll = rows - visible;
-        if (maxScroll < 0) {
-            maxScroll = 0;
-        }
-        if (scroll > maxScroll) {
-            scroll = maxScroll;
-        }
-        if (scroll < 0) {
-            scroll = 0;
-        }
-
-        startFade();
-        WatchUi.requestUpdate();
     }
 
     hidden function prop(key) {
@@ -435,6 +526,7 @@ class TwitcherView extends WatchUi.View {
         params.put("dist", num("searchRadius", 15, 1, 50).format("%d"));
         params.put("back", num("daysBack", 7, 1, 30).format("%d"));
         params.put("maxResults", "10");
+        params.put("cat", "species");
 
         var headers = {};
         headers.put("X-eBirdApiToken", key);
@@ -458,45 +550,62 @@ class TwitcherView extends WatchUi.View {
         }
     }
 
-    hidden function collect(data, into, cap) {
-        var n = 0;
-
-        if (!(data instanceof Lang.Array)) {
-            return 0;
+    hidden function str(v) {
+        if (v == null) {
+            return "";
         }
+        return v.toString();
+    }
 
-        for (var i = 0; i < data.size(); i++) {
-            if (n < cap) {
-                var obs = data[i];
-                var valid = obs["obsValid"];
-
-                if (valid != null && valid == true) {
-                    var name = obs["comName"];
-
-                    if (name != null) {
-                        var dup = false;
-                        for (var j = 0; j < n; j++) {
-                            if (into[j].equals(name)) {
-                                dup = true;
-                            }
-                        }
-                        if (!dup) {
-                            into[n] = name;
-                            n = n + 1;
-                        }
-                    }
-                }
-            }
+    hidden function isHybrid(name) {
+        if (name.find(" x ") != null) {
+            return true;
         }
-        return n;
+        if (name.find(" sp.") != null) {
+            return true;
+        }
+        if (name.find("/") != null) {
+            return true;
+        }
+        return false;
     }
 
     function onNearby(responseCode as Number, data as Null or Dictionary or String or PersistedContent.Iterator) as Void {
         if (responseCode == 200) {
-            nearbyN = collect(data, nearby, 12);
+            nearbyN = 0;
+
+            if (data instanceof Lang.Array) {
+                for (var i = 0; i < data.size(); i++) {
+                    if (nearbyN < 12) {
+                        var obs = data[i];
+                        var valid = obs["obsValid"];
+
+                        if (valid != null && valid == true) {
+                            var name = obs["comName"];
+
+                            if (name != null && !isHybrid(name)) {
+                                var dup = false;
+                                for (var j = 0; j < nearbyN; j++) {
+                                    if (nName[j].equals(name)) {
+                                        dup = true;
+                                    }
+                                }
+                                if (!dup) {
+                                    nName[nearbyN] = name;
+                                    nSci[nearbyN]  = str(obs["sciName"]);
+                                    nCnt[nearbyN]  = str(obs["howMany"]);
+                                    nDate[nearbyN] = str(obs["obsDt"]);
+                                    nLoc[nearbyN]  = str(obs["locName"]);
+                                    nearbyN = nearbyN + 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if (nearbyN > 0) {
-                build(new [8], 0);
+                build(null, 0);
                 WatchUi.requestUpdate();
                 request("data/obs/geo/recent/notable", method(:onNotable));
             } else {
@@ -525,40 +634,52 @@ class TwitcherView extends WatchUi.View {
     }
 
     function onNotable(responseCode as Number, data as Null or Dictionary or String or PersistedContent.Iterator) as Void {
-        var notable = new [8];
-        var notableN = 0;
-
-        if (responseCode == 200) {
-            notableN = collect(data, notable, 8);
-        }
-
-        build(notable, notableN);
+        build((responseCode == 200) ? data : null, 8);
         finish();
     }
 
-    hidden function build(notable, notableN) {
+    hidden function build(notableData, cap) {
         rows = 0;
 
         if (nearbyN > 0) {
-            addRow("NEARBY", null, "head");
+            addRow("NEARBY", null, "head", "", "", "", "");
 
             for (var i = 0; i < nearbyN; i++) {
-                addRow(nearby[i], groupFor(nearby[i]), "bird");
+                addRow(nName[i], groupFor(nName[i]), "bird",
+                    nSci[i], nCnt[i], nDate[i], nLoc[i]);
             }
         }
 
-        if (notableN > 0) {
-            addRow("UNUSUAL", null, "headalt");
+        var added = 0;
 
-            for (var i = 0; i < notableN; i++) {
-                var dup = false;
-                for (var j = 0; j < nearbyN; j++) {
-                    if (nearby[j].equals(notable[i])) {
-                        dup = true;
+        if (notableData instanceof Lang.Array && cap > 0) {
+            for (var i = 0; i < notableData.size(); i++) {
+                if (added < cap) {
+                    var obs = notableData[i];
+                    var valid = obs["obsValid"];
+
+                    if (valid != null && valid == true) {
+                        var name = obs["comName"];
+
+                        if (name != null && !isHybrid(name)) {
+                            var dup = false;
+                            for (var j = 0; j < rows; j++) {
+                                if (isBird(j) && rowText[j].equals(name)) {
+                                    dup = true;
+                                }
+                            }
+
+                            if (!dup) {
+                                if (added == 0) {
+                                    addRow("UNUSUAL", null, "headalt", "", "", "", "");
+                                }
+                                addRow(name, groupFor(name), "birdalt",
+                                    str(obs["sciName"]), str(obs["howMany"]),
+                                    str(obs["obsDt"]), str(obs["locName"]));
+                                added = added + 1;
+                            }
+                        }
                     }
-                }
-                if (!dup) {
-                    addRow(notable[i], groupFor(notable[i]), "birdalt");
                 }
             }
         }
@@ -568,25 +689,38 @@ class TwitcherView extends WatchUi.View {
 
             if (nearbyN > 0) {
                 try {
-                    Application.Storage.setValue("lastTop", nearby[0]);
+                    Application.Storage.setValue("lastTop", nName[0]);
                 } catch (e) {
                 }
             }
 
             if (lastLat != null) {
                 addRow(lastLat.format("%.3f") + ", " + lastLng.format("%.3f"),
-                    null, "foot");
+                    null, "foot", "", "", "", "");
             }
-            addRow("eBird / Cornell Lab", null, "foot");
-            addRow("START to refresh", null, "foot");
+            addRow("eBird / Cornell Lab", null, "foot", "", "", "", "");
+            addRow("MENU to refresh", null, "foot", "", "", "", "");
+
+            if (sel < 0) {
+                for (var i = 0; i < rows; i++) {
+                    if (isBird(i)) {
+                        sel = i;
+                        break;
+                    }
+                }
+            }
         }
     }
 
-    hidden function addRow(text, icon, kind) {
+    hidden function addRow(text, icon, kind, sci, cnt, date, loc) {
         if (rows < CAP) {
-            rowText[rows] = text;
-            rowIcon[rows] = icon;
-            rowKind[rows] = kind;
+            rowText[rows]  = text;
+            rowIcon[rows]  = icon;
+            rowKind[rows]  = kind;
+            rowSci[rows]   = sci;
+            rowCount[rows] = cnt;
+            rowDate[rows]  = date;
+            rowLoc[rows]   = loc;
             rows = rows + 1;
         }
     }
@@ -613,6 +747,82 @@ class TwitcherView extends WatchUi.View {
         return s;
     }
 
+    hidden function marquee(dc, text, cx, y, maxW, colour, fh) {
+        if (text.equals("")) {
+            return;
+        }
+
+        var tw = dc.getTextWidthInPixels(text, Graphics.FONT_XTINY);
+
+        dc.setColor(colour, Graphics.COLOR_TRANSPARENT);
+
+        if (tw <= maxW) {
+            dc.drawText(cx, y, Graphics.FONT_XTINY, text,
+                Graphics.TEXT_JUSTIFY_CENTER);
+            return;
+        }
+
+        var cycle = tw + MARQ_GAP;
+        if (cycle > marqMax) {
+            marqMax = cycle;
+        }
+
+        var off = marqOff;
+        if (off < 0) {
+            off = 0;
+        }
+        off = off % cycle;
+
+        var left = cx - (maxW / 2);
+
+        dc.setClip(left, y - 2, maxW, fh + 4);
+
+        dc.drawText(left - off, y, Graphics.FONT_XTINY, text,
+            Graphics.TEXT_JUSTIFY_LEFT);
+        dc.drawText(left - off + cycle, y, Graphics.FONT_XTINY, text,
+            Graphics.TEXT_JUSTIFY_LEFT);
+
+        dc.clearClip();
+    }
+
+    hidden function drawDetail(dc, cx, cy, fh, muted) {
+        var i = detail;
+        var lh = fh + 4;
+        var maxW = (dc.getWidth() * 0.74).toNumber();
+
+        var y = cy - (lh * 2) - 10;
+
+        marquee(dc, rowText[i], cx, y, maxW, Graphics.COLOR_WHITE, fh);
+
+        y = y + lh + 4;
+
+        marquee(dc, rowSci[i], cx, y, maxW, muted, fh);
+
+        y = y + lh + 6;
+
+        var line = "";
+        if (!rowCount[i].equals("")) {
+            line = rowCount[i] + " seen";
+        }
+        if (!rowDate[i].equals("")) {
+            var d = rowDate[i];
+            if (d.length() > 10) {
+                d = d.substring(0, 10);
+            }
+            if (line.equals("")) {
+                line = d;
+            } else {
+                line = line + "  -  " + d;
+            }
+        }
+
+        marquee(dc, line, cx, y, maxW, Graphics.COLOR_WHITE, fh);
+
+        y = y + lh;
+
+        marquee(dc, rowLoc[i], cx, y, maxW, muted, fh);
+    }
+
     function onUpdate(dc as Dc) as Void {
         var cx = dc.getWidth() / 2;
         var cy = dc.getHeight() / 2;
@@ -626,7 +836,6 @@ class TwitcherView extends WatchUi.View {
 
         if (colourMode) {
             muted = blend(TEAL_MUTE, AMBER_MUTE, colourT);
-
             dc.setColor(blend(TEAL, ORANGE, colourT), Graphics.COLOR_TRANSPARENT);
             dc.fillCircle(cx, cy, cx + 2);
         }
@@ -636,6 +845,13 @@ class TwitcherView extends WatchUi.View {
             if (msg == null) {
                 msg = "...";
             }
+
+            var bmp = art.get("duck");
+            if (bmp != null) {
+                dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+                dc.drawBitmap(cx - 15, cy - fh - 44, bmp);
+            }
+
             dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
             dc.drawText(cx, cy, Graphics.FONT_XTINY, msg,
                 Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
@@ -644,6 +860,11 @@ class TwitcherView extends WatchUi.View {
                 Graphics.COLOR_TRANSPARENT);
             dc.drawText(cx, cy + fh + 12, Graphics.FONT_XTINY,
                 "eBird / Cornell Lab", Graphics.TEXT_JUSTIFY_CENTER);
+            return;
+        }
+
+        if (detail >= 0) {
+            drawDetail(dc, cx, cy, fh, muted);
             return;
         }
 
@@ -702,7 +923,8 @@ class TwitcherView extends WatchUi.View {
                 var textX = left + 36;
                 var maxW = (cx + half) - textX;
 
-                dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+                dc.setColor(idx == sel ? Graphics.COLOR_WHITE : muted,
+                    Graphics.COLOR_TRANSPARENT);
 
                 var bmp = art.get(rowIcon[idx]);
                 if (bmp != null) {
@@ -718,7 +940,7 @@ class TwitcherView extends WatchUi.View {
             var arcR = cx - 4;
             var span = 70;
             var top = span / 2;
-            
+
             var frac = visible.toFloat() / rows.toFloat();
             var thumbSpan = (span * frac).toNumber();
             if (thumbSpan < 8) {
@@ -732,8 +954,7 @@ class TwitcherView extends WatchUi.View {
 
             dc.setColor(colourMode ? muted : Graphics.COLOR_DK_GRAY,
                 Graphics.COLOR_TRANSPARENT);
-            dc.drawArc(cx, cy, arcR, Graphics.ARC_CLOCKWISE,
-                top, top - span);
+            dc.drawArc(cx, cy, arcR, Graphics.ARC_CLOCKWISE, top, top - span);
 
             dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
             dc.drawArc(cx, cy, arcR, Graphics.ARC_CLOCKWISE,
@@ -746,6 +967,7 @@ class TwitcherView extends WatchUi.View {
     function onHide() as Void {
         Position.enableLocationEvents(Position.LOCATION_DISABLE, method(:onPosition));
         stopFade();
+        stopMarq();
         if (timer != null) {
             timer.stop();
         }

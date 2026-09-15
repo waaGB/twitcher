@@ -11,16 +11,25 @@ class TwitcherDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onNextPage() as Boolean {
-        view.scrollBy(1);
+        view.moveSel(1);
         return true;
     }
 
     function onPreviousPage() as Boolean {
-        view.scrollBy(-1);
+        view.moveSel(-1);
         return true;
     }
 
     function onSelect() as Boolean {
+        view.openDetail();
+        return true;
+    }
+
+    function onBack() as Boolean {
+        return view.closeDetail();
+    }
+
+    function onMenu() as Boolean {
         view.refresh();
         return true;
     }
