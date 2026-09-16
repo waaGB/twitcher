@@ -8,4 +8,7 @@
     <setting propertyKey="@Properties.daysBack" title="@Strings.SettingDays">
         <settingConfig type="numeric" min="1" max="30" />
     </setting>
+    <setting propertyKey="@Properties.useColour" title="@Strings.SettingColour" prompt="@Strings.SettingColourPrompt">
+        <settingConfig type="boolean" />
+    </setting>
 </settings>

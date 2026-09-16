@@ -87,6 +87,13 @@ class TwitcherView extends WatchUi.View {
             colourMode = false;
         }
 
+        if (colourMode) {
+            var want = prop("useColour");
+            if (want != null && want == false) {
+                colourMode = false;
+            }
+        }
+
         var rowH = rowHeight(dc);
         visible = (dc.getHeight() * 0.66).toNumber() / rowH;
 

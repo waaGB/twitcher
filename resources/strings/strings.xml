@@ -4,4 +4,6 @@
     <string id="SettingApiKeyPrompt">Get a free key at ebird.org/api/keygen</string>
     <string id="SettingRadius">Search radius (km)</string>
     <string id="SettingDays">Days to look back</string>
+    <string id="SettingColour">Colour theme</string>
+    <string id="SettingColourPrompt">Off gives a plain black and white display, which uses less battery on AMOLED watches</string>
 </strings>

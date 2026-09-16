@@ -2,4 +2,5 @@
     <property id="apiKey" type="string"></property>
     <property id="searchRadius" type="number">15</property>
     <property id="daysBack" type="number">7</property>
+    <property id="useColour" type="boolean">true</property>
 </properties>
