@@ -829,7 +829,7 @@ class TwitcherView extends WatchUi.View {
         var fh = dc.getFontHeight(Graphics.FONT_XTINY);
         var w = dc.getWidth();
 
-        var muted = Graphics.COLOR_DK_GRAY;
+        var muted = Graphics.COLOR_LT_GRAY;
 
         dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_BLACK);
         dc.clear();
@@ -923,13 +923,19 @@ class TwitcherView extends WatchUi.View {
                 var textX = left + 36;
                 var maxW = (cx + half) - textX;
 
-                dc.setColor(idx == sel ? Graphics.COLOR_WHITE : muted,
-                    Graphics.COLOR_TRANSPARENT);
-
                 var bmp = art.get(rowIcon[idx]);
                 if (bmp != null) {
+                    dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
                     dc.drawBitmap(left, y + 1, bmp);
                 }
+
+                if (idx == sel) {
+                    dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+                    dc.fillRectangle(textX - 6, y + 4, 2, rowH - 8);
+                }
+
+                dc.setColor(idx == sel ? Graphics.COLOR_WHITE : muted,
+                    Graphics.COLOR_TRANSPARENT);
 
                 dc.drawText(textX, y + 3, Graphics.FONT_XTINY,
                     fit(dc, rowText[idx], maxW), Graphics.TEXT_JUSTIFY_LEFT);
