@@ -486,7 +486,7 @@ class TwitcherView extends WatchUi.View {
         var key = cleanKey();
 
         if (key.length() < 4) {
-            status = "See Store Description";
+            status = "No API Key\nSee Store Description";
             finish();
             return false;
         }
